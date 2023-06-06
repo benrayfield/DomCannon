@@ -1,0 +1,1480 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>cannon.js - RigidVehicle</title>
+		<meta charset="utf-8">
+		<link rel="stylesheet" href="css/style.css" type="text/css"/>
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	</head>
+	<body>
+		<script src="js/cannon.js"></script>
+		<script src="js/cannon.demo.js"></script>
+		<script src="js/dat.gui.js"></script>
+		<script src="js/threejsRevision87.js"></script>
+		<script src="js/trackballControls.js"></script>
+		<script src="js/detector.js"></script>
+		<script src="js/stats.js"></script>
+		<script src="js/smoothie.js"></script>
+		<div id=carRoofDiv style="position:absolute;z-index:1000000;scaleX(-1)">
+			<input id=rangeA style="background-color:red; transform: rotate(270deg)" type=range min=0 max=100 value=50></input>
+			<input id=rangeB style="background-color:blue" type=range min=0 max=100 value=50></input>
+			<br><br><br><br><br><br>
+			<h2><font color=#0ff>Domcannon demo by Ben Rayfield</font></h2>
+		</div>
+		<script>
+
+				var demo = new CANNON.Demo();
+				var mass = 1;
+				var vehicle;
+				
+				
+				//These are top left corner.
+				//TODO can this be done without checking scroll position?
+				var dobY = dob=>(dob.getBoundingClientRect().top+window.pageYOffset);
+				var dobX = dob=>(dob.getBoundingClientRect().left+window.pageXOffset);
+				var dobYEnd = dob=>(dobY(dob)+dobHeight(dob));
+				var dobXEnd = dob=>(dobX(dob)+dobWidth(dob));
+
+				//var dobHeight = dob=>dob.clientHeight;
+				var dobHeight = dob=>dob.offsetHeight; //include border
+
+				//var dobWidth = dob=>dob.clientWidth;
+				var dobWidth = dob=>dob.offsetWidth; //include border
+
+				var dobCenterY = dob=>(dobY(dob)+dobHeight(dob)/2);
+				var dobCenterX = dob=>(dobX(dob)+dobWidth(dob)/2);
+
+		
+				window.CANNONdemo = demo;
+				
+				//FIXME why isnt it using z? This is buggy. Not using it as of 2023-6-6-1230p but code still calls it, todo remove that code.
+				var screenXYZToScreenXY = (x, y, z)=>{
+					let widthHalf = window.innerWidth / 2;
+					let heightHalf = window.innerHeight / 2;
+					let screenX = (x * widthHalf) + widthHalf;
+					let screenY = -(y * heightHalf) + heightHalf;
+
+					return [screenX, screenY];
+				};
+				
+				var camXyzToScreenXY = (perspectiveCamera, x, y, z)=>{
+					// Create a vector representing the 3D point
+					let point = new THREE.Vector3(x, y, z);
+
+					// Project the 3D point onto the screen
+					point.project(perspectiveCamera);
+
+					// Convert normalized device coordinates to screen coordinates
+					let widthHalf = window.innerWidth / 2;
+					let heightHalf = window.innerHeight / 2;
+					let screenX = (point.x * widthHalf) + widthHalf;
+					let screenY = -(point.y * heightHalf) + heightHalf;
+
+					return [screenX, screenY];
+				};
+				
+				/*window.CANNONupdate = function(){
+					let carRoofDiv = document.getElementById('carRoofDiv');
+
+					// Get the screen coordinates of the top face vertices
+					let topFaceVertices = [
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[0],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[1],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[2],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[3]
+					];
+
+					let screenCoordinates = [];
+					for (let i = 0; i < topFaceVertices.length; i++) {
+						let vertex = topFaceVertices[i];
+						let worldPosition = new CANNON.Vec3(vertex.x, vertex.y, vertex.z);
+
+						let screenPosition = camXyzToScreenXY(CANNONcamera, worldPosition.x, worldPosition.y, worldPosition.z);
+
+						screenCoordinates.push(screenPosition);
+					}
+
+					// Calculate the transformation matrix
+					let matrix3d = 'matrix3d(' +
+						'1, 0, 0, 0,' +
+						'0, 1, 0, 0,' +
+						'0, 0, 1, 0,' +
+						screenCoordinates[0][1] + ', ' + screenCoordinates[0][0] + ', 0, 1)';
+					console.log(matrix3d);
+
+					// Apply the transformation to the carRoofDiv element
+					carRoofDiv.style.transform = matrix3d;
+				};*/
+				
+				/*window.CANNONupdate = function() {
+					let carRoofDiv = document.getElementById('carRoofDiv');
+
+					// Get the screen coordinates of the top face vertices
+					let topFaceVertices = [
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[0],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[1],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[2],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[3]
+					];
+
+					let screenCoordinates = [];
+					for (let i = 0; i < topFaceVertices.length; i++) {
+						let vertex = topFaceVertices[i];
+						let worldPosition = new CANNON.Vec3(vertex.x, vertex.y, vertex.z);
+
+						let screenPosition = camXyzToScreenXY(CANNONcamera, worldPosition.x, worldPosition.y, worldPosition.z);
+
+						screenCoordinates.push(screenPosition);
+					}
+
+					// Calculate the transformation matrix
+					let matrix3d = 'matrix3d(' +
+						(screenCoordinates[1][1] - screenCoordinates[0][1]) + ',\t' +
+						(screenCoordinates[1][0] - screenCoordinates[0][0]) + ',\t0,\t0,\n' +
+						(screenCoordinates[3][1] - screenCoordinates[0][1]) + ',\t' +
+						(screenCoordinates[3][0] - screenCoordinates[0][0]) + ',\t0,\t0,\n' +
+						'0,\t0,\t1,\t0,\n' +
+						screenCoordinates[0][1] + ',\t' +
+						screenCoordinates[0][0] + ',\t0,\t1)';
+					console.log(matrix3d);
+
+					// Apply the transformation to the carRoofDiv element
+					carRoofDiv.style.transform = matrix3d;
+				};*/
+				
+				/*window.CANNONupdate = function() {
+					let carRoofDiv = document.getElementById('carRoofDiv');
+
+					// Get the screen coordinates of the top face vertices
+					let topFaceVertices = [
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[0],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[1],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[2],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[3]
+					];
+
+					let minX = Number.MAX_VALUE;
+					let maxX = Number.MIN_VALUE;
+					let minY = Number.MAX_VALUE;
+					let maxY = Number.MIN_VALUE;
+
+					for (let i = 0; i < topFaceVertices.length; i++) {
+						let vertex = topFaceVertices[i];
+						let worldPosition = new CANNON.Vec3(vertex.x, vertex.y, vertex.z);
+
+						let screenPosition = camXyzToScreenXY(CANNONcamera, worldPosition.x, worldPosition.y, worldPosition.z);
+
+						minX = Math.min(minX, screenPosition[1]);
+						maxX = Math.max(maxX, screenPosition[1]);
+						minY = Math.min(minY, screenPosition[0]);
+						maxY = Math.max(maxY, screenPosition[0]);
+					}
+
+					let width = maxX - minX;
+					let height = maxY - minY;
+
+					// Calculate the transformation matrix
+					let matrix3d = 'matrix3d(' +
+						width + ',\t0,\t0,\t0,\n' +
+						'0,\t' + height + ',\t0,\t0,\n' +
+						'0,\t0,\t1,\t0,\n' +
+						minX + ',\t' + minY + ',\t0,\t1)';
+					console.log(matrix3d);
+
+					// Apply the transformation to the carRoofDiv element
+					carRoofDiv.style.transform = matrix3d;
+				};*/
+				
+				/*window.CANNONupdate = function() {
+					let carRoofDiv = document.getElementById('carRoofDiv');
+
+					// Get the screen coordinates of the top face vertices
+					let topFaceVertices = [
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[0],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[1],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[2],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[3]
+					];
+
+					let minX = Number.MAX_VALUE;
+					let maxX = Number.MIN_VALUE;
+					let minY = Number.MAX_VALUE;
+					let maxY = Number.MIN_VALUE;
+
+					for (let i = 0; i < topFaceVertices.length; i++) {
+						let vertex = topFaceVertices[i];
+						let worldPosition = new CANNON.Vec3(vertex.x, vertex.y, vertex.z);
+
+						let screenPosition = camXyzToScreenXY(CANNONcamera, worldPosition.x, worldPosition.y, worldPosition.z);
+
+						minX = Math.min(minX, screenPosition[1]);
+						maxX = Math.max(maxX, screenPosition[1]);
+						minY = Math.min(minY, screenPosition[0]);
+						maxY = Math.max(maxY, screenPosition[0]);
+					}
+
+					let width = maxX - minX;
+					let height = maxY - minY;
+
+					// Scale down the width and height values
+					//let scale = 0.2; // Adjust the scale factor as needed
+					let scale = .01;
+					width *= scale;
+					height *= scale;
+
+					// Calculate the transformation matrix
+					let matrix3d = 'matrix3d(' +
+						width + ',\t0,\t0,\t0,\n' +
+						'0,\t' + height + ',\t0,\t0,\n' +
+						'0,\t0,\t1,\t0,\n' +
+						minX + ',\t' + minY + ',\t0,\t1)';
+					console.log(matrix3d);
+
+					// Apply the transformation to the carRoofDiv element
+					carRoofDiv.style.transform = matrix3d;
+				};*/
+				
+				CANNON.Vec3.prototype.applyQuaternion = THREE.Vector3.prototype.applyQuaternion; //FIXME?
+				CANNON.Vec3.prototype.applyMatrix3 = THREE.Vector3.prototype.applyMatrix3; //FIXME?
+				CANNON.Vec3.prototype.applyMatrix4 = THREE.Vector3.prototype.applyMatrix4; //FIXME?
+				
+				window.CANNONRigidVehicleTo8Corners = function(rigidVehicle){
+					let vertices = [];
+					let halfExtents = CANNONvehicle.chassisBody.shapes[0].halfExtents;
+					
+					let boxOffset = rigidVehicle.chassisBody.shapeOffsets[0]; //Vec3 created by centerOfMassAdjust var.
+
+					for(let i = 0; i < 2; i++){
+						for(let j = 0; j < 2; j++){
+							for(let k = 0; k < 2; k++){
+								let x = (i === 0 ? -halfExtents.x : halfExtents.x)+boxOffset.x;
+								let y = (j === 0 ? -halfExtents.y : halfExtents.y)+boxOffset.y;
+								let z = (k === 0 ? -halfExtents.z : halfExtents.z)+boxOffset.z;
+								//y = -y; //FIXME?
+								
+								let vertex = new CANNON.Vec3(x, y, z);
+								CANNONvehicle.chassisBody.vectorToWorldFrame(vertex, vertex);
+								vertex.vadd(CANNONvehicle.chassisBody.position, vertex);
+								vertices.push(vertex);
+							}
+						}
+					}
+					return vertices;
+				};
+				
+				/*window.CANNONCameraAndVec3ToScreenVec3 = function(camera, vec3) {
+					// Create a temporary vector to hold the result
+					const resultVec3 = new CANNON.Vec3();
+
+					// Get the camera's position and orientation
+					const cameraPosition = camera.position;
+					const cameraQuaternion = camera.quaternion;
+
+					// Transform the input vector to the camera's local coordinate system
+					//const localVec3 = new CANNON.Vec3().copy(vec3).vsub(cameraPosition).applyQuaternion(cameraQuaternion.inverse());
+					//const localVec3 = CANNONCopyVec3(vec3).vsub(cameraPosition).applyQuaternion(cameraQuaternion.inverse());
+					const localVec3 = CANNONCopyVec3(vec3); //FIXME
+
+					// Calculate the normalized device coordinates (NDC) based on the camera's perspective projection
+					const width = window.innerWidth;
+					const height = window.innerHeight;
+					const aspect = width / height;
+					const fov = camera.fov * (Math.PI / 180); // Convert fov to radians
+					const near = camera.near;
+					const far = camera.far;
+					const projectionMatrix = new CANNON.Mat4().perspective(fov, aspect, near, far);
+					const ndcVec3 = new CANNON.Vec3(
+						(2 * localVec3.x) / (projectionMatrix.elements[0] * localVec3.z + projectionMatrix.elements[8]),
+						(2 * localVec3.y) / (projectionMatrix.elements[5] * localVec3.z + projectionMatrix.elements[9]),
+						-1
+					);
+
+					// Convert the NDC to screen coordinates
+					const screenX = ((ndcVec3.x + 1) * width) / 2;
+					const screenY = ((1 - ndcVec3.y) * height) / 2;
+
+					// Set the result vector with the screen coordinates and the original z-coordinate
+					resultVec3.set(screenX, screenY, localVec3.z);
+
+					return resultVec3;
+				};*/
+				
+				
+				/*window.CANNONCameraAndVec3ToScreenVec3 = function(camera, vec3) {
+					// Create a temporary vector to hold the result
+					const resultVec3 = new CANNON.Vec3();
+
+					// Get the camera's position and orientation
+					const cameraPosition = camera.position;
+					const cameraQuaternion = camera.quaternion;
+
+					// Transform the input vector to the camera's local coordinate system
+					//const localVec3 = CANNONCopyVec3(vec3); // FIXME
+					const localVec3 = CANNONCopyVec3(vec3).vsub(cameraPosition).applyQuaternion(cameraQuaternion.inverse());
+
+					// Calculate the normalized device coordinates (NDC) based on the camera's perspective projection
+					const width = window.innerWidth;
+					const height = window.innerHeight;
+					const aspect = width / height;
+					const fov = camera.fov * (Math.PI / 180); // Convert fov to radians
+					const near = camera.near;
+					const far = camera.far;
+					const projectionMatrix = new THREE.Matrix4().makePerspective(fov, aspect, near, far);
+					const ndcVec3 = new CANNON.Vec3(
+						(2 * localVec3.x) / (projectionMatrix.elements[0] * localVec3.z + projectionMatrix.elements[8]),
+						(2 * localVec3.y) / (projectionMatrix.elements[5] * localVec3.z + projectionMatrix.elements[9]),
+						-1
+					);
+
+					// Convert the NDC to screen coordinates
+					const screenX = ((ndcVec3.x + 1) * width) / 2;
+					const screenY = ((1 - ndcVec3.y) * height) / 2;
+
+					// Set the result vector with the screen coordinates and the original z-coordinate
+					resultVec3.set(screenX, screenY, localVec3.z);
+
+					return resultVec3;
+				};*/
+				
+				
+				
+				/*window.CANNONCameraAndVec3ToScreenVec3 = function(camera, vec3) {
+					// Create a temporary vector to hold the result
+					const resultVec3 = new CANNON.Vec3();
+
+					// Get the camera's position and orientation
+					const cameraPosition = camera.position;
+					const cameraQuaternion = camera.quaternion;
+
+					// Transform the input vector to the camera's local coordinate system
+					const localVec3 = new CANNON.Vec3().copy(vec3).vsub(cameraPosition);
+
+					// Rotate the local vector by the camera's quaternion
+					const rotatedVec3 = new CANNON.Vec3().copy(localVec3).rotate(cameraQuaternion.inverse());
+
+					// Calculate the normalized device coordinates (NDC) based on the camera's perspective projection
+					const width = window.innerWidth;
+					const height = window.innerHeight;
+					const aspect = width / height;
+					const fov = camera.fov * (Math.PI / 180); // Convert fov to radians
+					const near = camera.near;
+					const far = camera.far;
+					const projectionMatrix = new CANNON.Mat3().setPerspective(fov, aspect, near, far);
+					const ndcVec3 = new CANNON.Vec3(
+						(2 * rotatedVec3.x) / (projectionMatrix.elements[0] * rotatedVec3.z + projectionMatrix.elements[6]),
+						(2 * rotatedVec3.y) / (projectionMatrix.elements[4] * rotatedVec3.z + projectionMatrix.elements[7]),
+						-1
+					);
+
+					// Convert the NDC to screen coordinates
+					const screenX = ((ndcVec3.x + 1) * width) / 2;
+					const screenY = ((1 - ndcVec3.y) * height) / 2;
+
+					// Set the result vector with the screen coordinates and the original z-coordinate
+					resultVec3.set(screenX, screenY, rotatedVec3.z);
+
+					return resultVec3;
+				};*/
+				
+				
+				
+				
+				/*window.CANNONCameraAndVec3ToScreenVec3 = function(camera, vec3) {
+					// Create a temporary vector to hold the result
+					const resultVec3 = new CANNON.Vec3();
+
+					// Get the camera's position and orientation
+					const cameraPosition = camera.position;
+					const cameraQuaternion = camera.quaternion;
+
+					// Transform the input vector to the camera's local coordinate system
+					const localVec3 = new CANNON.Vec3().copy(vec3).vsub(cameraPosition);
+
+					// Multiply the quaternion by the local vector
+					const rotatedVec3 = cameraQuaternion.multiplyVector3(new CANNON.Vec3().copy(localVec3));
+
+					// Calculate the normalized device coordinates (NDC) based on the camera's perspective projection
+					const width = window.innerWidth;
+					const height = window.innerHeight;
+					const aspect = width / height;
+					const fov = camera.fov * (Math.PI / 180); // Convert fov to radians
+					const near = camera.near;
+					const far = camera.far;
+					const projectionMatrix = new CANNON.Mat3().setPerspective(fov, aspect, near, far);
+					const ndcVec3 = new CANNON.Vec3(
+						(2 * rotatedVec3.x) / (projectionMatrix.elements[0] * rotatedVec3.z + projectionMatrix.elements[6]),
+						(2 * rotatedVec3.y) / (projectionMatrix.elements[4] * rotatedVec3.z + projectionMatrix.elements[7]),
+						-1
+					);
+
+					// Convert the NDC to screen coordinates
+					const screenX = ((ndcVec3.x + 1) * width) / 2;
+					const screenY = ((1 - ndcVec3.y) * height) / 2;
+
+					// Set the result vector with the screen coordinates and the original z-coordinate
+					resultVec3.set(screenX, screenY, rotatedVec3.z);
+
+					return resultVec3;
+				};*/
+				
+				
+				/*window.CANNONCameraAndVec3ToScreenVec3 = function(camera, vec3) {
+					// Create a temporary vector to hold the result
+					const resultVec3 = new CANNON.Vec3();
+
+					// Get the camera's position and orientation
+					const cameraPosition = camera.position;
+					const cameraQuaternion = camera.quaternion;
+
+					// Transform the input vector to the camera's local coordinate system
+					const localVec3 = new CANNON.Vec3().copy(vec3).vsub(cameraPosition);
+
+					// Multiply the quaternion by the local vector
+					//const rotatedVec3 = new CANNON.Vec3().copy(localVec3).vmult(cameraQuaternion);
+					//const rotatedVec3 = cameraQuaternion.multiplyVector3(new CANNON.Vec3().copy(localVec3));
+					const rotatedVec3 = new CANNON.Vec3().copy(localVec3).applyQuaternion(cameraQuaternion);
+
+					// Calculate the normalized device coordinates (NDC) based on the camera's perspective projection
+					const width = window.innerWidth;
+					const height = window.innerHeight;
+					const aspect = width / height;
+					const fov = camera.fov * (Math.PI / 180); // Convert fov to radians
+					const near = camera.near;
+					const far = camera.far;
+
+					// Calculate the projection matrix
+					const projectionMatrix = new CANNON.Mat3();
+					projectionMatrix.elements[0] = 1 / (aspect * Math.tan(fov / 2));
+					projectionMatrix.elements[4] = 1 / Math.tan(fov / 2);
+					projectionMatrix.elements[8] = -(far + near) / (far - near);
+					projectionMatrix.elements[9] = -1;
+
+					// Calculate the ndcVec3 using the projection matrix
+					const ndcVec3 = new CANNON.Vec3(
+						(2 * rotatedVec3.x) / (projectionMatrix.elements[0] * rotatedVec3.z + projectionMatrix.elements[6]),
+						(2 * rotatedVec3.y) / (projectionMatrix.elements[4] * rotatedVec3.z + projectionMatrix.elements[7]),
+						-1
+					);
+
+					// Convert the NDC to screen coordinates
+					const screenX = ((ndcVec3.x + 1) * width) / 2;
+					const screenY = ((1 - ndcVec3.y) * height) / 2;
+
+					// Set the result vector with the screen coordinates and the original z-coordinate
+					resultVec3.set(screenX, screenY, rotatedVec3.z);
+
+					return resultVec3;
+				};*/
+				
+				
+				window.CANNONCameraAndVec3ToScreenVec3 = function(camera, vec3){
+				
+					let viewMat = camera.matrix;
+					let viewMatInverse = new THREE.Matrix4().getInverse(viewMat);
+				
+					// Create a temporary vector to hold the result
+					const resultVec3 = CANNONCopyVec3(vec3);
+					//resultVec3.applyMatrix4(viewMat);
+					resultVec3.applyMatrix4(viewMatInverse);
+
+					return resultVec3;
+				};
+
+
+				
+				
+
+				//window.CANNONScaleXYMul = .1;
+				
+				window.CANNONTiltX = 0; //FIXME remove these after solve the parallelogram problem
+				window.CANNONTiltY = 0;
+				
+				window.CANNONAve2Vec3s = function(vecA,vecB){
+					return new CANNON.Vec3((vecA.x+vecB.x)/2, (vecA.y+vecB.y)/2, (vecA.z+vecB.z)/2);
+				};
+				
+				
+				window.CANNONupdate = function() {
+					let carRoofDiv = document.getElementById('carRoofDiv');
+					
+					let vehicle = CANNONvehicle;
+					
+					let vertices = CANNONRigidVehicleTo8Corners(vehicle);
+					//vertices = CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices; //FIXME remove this line
+					vertices = vertices.map(v=>CANNONCameraAndVec3ToScreenVec3(CANNONcamera,v));
+
+					// Get the screen coordinates of the top face vertices
+					/*let topFaceVertices = [
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[0],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[1],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[2],
+						CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices[3]
+					];*/
+					
+					//vertices[0], when the view starts 2023-6-5-415p, is top back right corner of car.
+					//vertices[2], when the view starts 2023-6-5-415p, is top front right corner of car.
+					
+					//let a = vertices[Math.floor(Math.random()*8)];
+					let vTopBackRight = vertices[1]; //2 wheels drive in back, 2 wheels steer in front.
+					let vTopBackLeft = vertices[3];
+					let vTopFrontRight = vertices[5];
+					let vTopFrontLeft = vertices[7];
+					
+					let vTopFront = CANNONAve2Vec3s(vTopFrontRight,vTopFrontLeft);
+					let vTopBack = CANNONAve2Vec3s(vTopBackRight,vTopBackLeft);
+					let vTopMid = CANNONAve2Vec3s(vTopFront,vTopBack);
+					
+					let vTopLeft = CANNONAve2Vec3s(vTopBackLeft,vTopFrontLeft);
+					let vTopRight = CANNONAve2Vec3s(vTopBackRight,vTopFrontRight);
+					
+					/*
+					let a = vTopFrontRight;
+					let b = vTopFrontLeft;
+					let c = vTopBackRight;
+					//let d = vertices[3];
+					*/
+
+					/*let minX = Number.MAX_VALUE;
+					let maxX = Number.MIN_VALUE;
+					let minY = Number.MAX_VALUE;
+					let maxY = Number.MIN_VALUE;
+
+					for (let i = 0; i < topFaceVertices.length; i++) {
+						let vertex = topFaceVertices[i];
+						let worldPosition = new CANNON.Vec3(vertex.x, vertex.y, vertex.z);
+
+						let screenPosition = camXyzToScreenXY(CANNONcamera, worldPosition.x, worldPosition.y, worldPosition.z);
+
+						minX = Math.min(minX, screenPosition[1]);
+						maxX = Math.max(maxX, screenPosition[1]);
+						minY = Math.min(minY, screenPosition[0]);
+						maxY = Math.max(maxY, screenPosition[0]);
+					}
+
+					let width = maxX - minX;
+					let height = maxY - minY;
+
+					// Scale down the width and height values
+					//let scale = 0.2; // Adjust the scale factor as needed
+					let scale = .01;
+					width *= scale;
+					height *= scale;
+
+					// Calculate the transformation matrix
+					let matrix3d = 'matrix3d(' +
+						width + ',\t0,\t0,\t0,\n' +
+						'0,\t' + height + ',\t0,\t0,\n' +
+						'0,\t0,\t1,\t0,\n' +
+						minX + ',\t' + minY + ',\t0,\t1)';
+					console.log(matrix3d);
+					*/
+					
+					/*
+					let upLeft = a; //FIXME??
+					let downLeft = b; //FIXME??
+					let upRight = c; //FIXME??
+					
+					let selfX = upLeft.x;
+					let selfY = upLeft.y;
+					let selfZ = upLeft.z;
+					let downDx = downLeft.x-selfX;
+					let downDy = downLeft.y-selfY;
+					let downDz = downLeft.z-selfZ;
+					let rightDx = upRight.x-selfX;
+					let rightDy = upRight.y-selfY;
+					let rightDz = upRight.z-selfZ;
+					*/
+					
+					let midX = vTopMid.x;
+					let midY = vTopMid.y;
+					let midZ = vTopMid.z;
+					
+					//let midScreenXY = camXyzToScreenXY(CANNONcamera, midX, midY, midZ);
+					let midScreenXY = screenXYZToScreenXY(midX, midY, midZ);
+					let midScreenX = midScreenXY[0];
+					let midScreenY = midScreenXY[1];
+					
+					let leftX = vTopLeft.x;
+					let leftY = vTopLeft.y;
+					let leftZ = vTopLeft.z;
+					
+					let frontX = vTopFront.x;
+					let frontY = vTopFront.y;
+					let frontZ = vTopFront.z;
+					
+					let leftDx = leftX-midX;
+					let leftDy = leftY-midY;
+					let leftDz = leftZ-midZ;
+					
+					let frontDx = frontX-midX;
+					let frontDy = frontY-midY;
+					let frontDz = frontZ-midZ;
+					
+					
+					//console.log('upLeft='+upLeft);
+					
+					/*let matrix3d = [
+						1,0,0,0,
+						0,Math.random(),0,0,
+						0,0,1,0,
+						0,0,0,1,
+					];*/
+					/*let matrix3d = [
+						1,0,0,0,
+						0,1,0,0,
+						0,0,1,0,
+						selfX*100,selfY*100,selfZ*100,1
+					];*/
+					
+					
+					/*let addX = window.innerWidth/2;
+					let addY = window.innerHeight/2;
+					let addZ = 0;
+					let mul = 10;
+					let matrix3d = [
+						1,0,0,0,
+						0,1,0,0,
+						0,0,1,0,
+						addX+selfX*mul,addY+-selfY*mul,addZ+selfZ*mul,1
+					];
+					*/
+					
+					/*let w = window.innerWidth;
+					let h = window.innerHeight;
+					
+					// Calculate scaling factors based on window dimensions
+					
+					let scaleX = w/2;
+					let scaleY = h/2;
+					//let scaleZ = 1/(100-selfZ);
+					let scaleZ = -selfZ;
+					console.log('scaleZ='+scaleZ);
+					
+					//selfZ is always negative.
+					
+					let powScaleZ = Math.sqrt(scaleZ);
+					//let powScaleZ = scaleZ*scaleZ;
+					//scaleX *= 1/powScaleZ;
+					//scaleY *= 1/powScaleZ;
+					let scaleXYMul = window.CANNONScaleXYMul;
+					scaleX *= scaleXYMul;
+					scaleY *= scaleXYMul;
+					
+					scaleX /= powScaleZ;
+					scaleY /= powScaleZ;
+
+					// Calculate translation values
+					/*let translateX = w/2 + selfX * scaleX;
+					let translateY = h/2 + -selfY * scaleY;
+					let translateZ = selfZ * scaleZ;
+					*
+					let translateX = w/2 + selfX*scaleX;
+					let translateY = h/2 + -selfY*scaleY;
+					let translateZ = selfZ * scaleZ;
+					*/
+					
+					
+					let w = window.innerWidth;
+					let h = window.innerHeight;
+					let divWidth = dobWidth(carRoofDiv);
+					let divHeight = dobHeight(carRoofDiv);
+					
+					
+					/*
+					//this is closest as of 2023-6-5-215p
+					let scaleX = w/2;
+					let scaleY = h/2;
+					let scaleZ = -selfZ;
+					console.log('scaleZ='+scaleZ);
+					//selfZ is always negative.
+					let powScaleZ = Math.sqrt(scaleZ);
+					let scaleXYMul = window.CANNONScaleXYMul;
+					scaleX *= scaleXYMul;
+					scaleY *= scaleXYMul;
+					scaleX /= powScaleZ;
+					scaleY /= powScaleZ;
+					let translateX = w/2 + selfX*scaleX;
+					let translateY = h/2 + -selfY*scaleY;
+					let translateZ = selfZ * scaleZ;
+					*/
+					
+					
+					/*
+					// Calculate the distance from the camera to the coordinate system based on selfZ
+					let distance = -selfZ;
+
+					// Calculate the scaling factors based on the camera's field of view and the distance
+					let camera = CANNONcamera;
+					let vFOV = camera.fov * (Math.PI / 180); // Convert fov to radians
+					let height = 2 * Math.tan(vFOV / 2) * distance;
+					let width = height * camera.aspect;
+
+					let scaleX = w / width;
+					let scaleY = h / height;
+					let scaleZ = 1;
+
+					// Calculate the translation values
+					let translateX = w / 2 + selfX * scaleX;
+					let translateY = h / 2 - selfY * scaleY;
+					let translateZ = selfZ * scaleZ;
+					*/
+					
+					
+					/*
+					// Calculate the distance from the camera to the coordinate system based on selfZ
+					let distance = -selfZ;
+
+					// Calculate the scaling factors based on the camera's field of view and the distance
+					let camera = CANNONcamera;
+					let vFOV = camera.fov * (Math.PI / 180); // Convert fov to radians
+					let height = 2 * Math.tan(vFOV / 2) * distance;
+					let width = height * camera.aspect;
+
+					let scaleX = w / width;
+					let scaleY = h / height;
+					let scaleZ = 1;
+
+					// Calculate the translation values
+					let translateX = w / 2 + selfX * scaleX;
+					let translateY = h / 2 - selfY * scaleY;
+					let translateZ = selfZ * scaleZ;
+
+					// Create the matrix3d transformation string
+					let matrix3d = `
+						${scaleX}, 0, 0, 0,
+						0, ${scaleY}, 0, 0,
+						0, 0, ${scaleZ}, 0,
+						${translateX}, ${translateY}, ${translateZ}, 1
+					`;
+
+					// Apply the matrix3d transformation to the div
+					carRoofDiv.style.transform = `matrix3d(${matrix3d})`;
+					*/
+					
+					
+					/*
+					// Calculate the distance from the camera to the coordinate system based on selfZ
+					let distance = -selfZ;
+
+					// Calculate the scaling factors based on the camera's field of view and the distance
+					let camera = CANNONcamera;
+					let vFOV = camera.fov * (Math.PI / 180); // Convert fov to radians
+					let height = 2 * Math.tan(vFOV / 2) * distance;
+					let width = height * camera.aspect;
+
+					let scaleX = w / width;
+					let scaleY = h / height;
+					let scaleZ = 1;
+
+					// Adjust the translation values to incorporate scaling factors
+					let translateX = (w / 2) / scaleX + selfX;
+					let translateY = (h / 2) / scaleY - selfY;
+					let translateZ = selfZ * scaleZ;
+
+					// Create the matrix3d transformation string
+					let matrix3d = `
+						${scaleX}, 0, 0, 0,
+						0, ${scaleY}, 0, 0,
+						0, 0, ${scaleZ}, 0,
+						${translateX}, ${translateY}, ${translateZ}, 1
+					`;
+
+					// Apply the matrix3d transformation to the div
+					carRoofDiv.style.transform = `matrix3d(${matrix3d})`;
+					*/
+					
+					
+					/*
+					// Define the width and height of the div or object you want to transform
+					let divWidth = dobWidth(carRoofDiv);
+					let divHeight = dobHeight(carRoofDiv);
+
+					// Calculate the distance from the camera to the coordinate system based on selfZ
+					let distance = -selfZ;
+
+					// Calculate the scaling factors based on the camera's field of view, the distance, and the div size
+					let camera = CANNONcamera;
+					let vFOV = camera.fov * (Math.PI / 180); // Convert fov to radians
+					let height = 2 * Math.tan(vFOV / 2) * distance;
+					let width = height * camera.aspect;
+
+					let scaleX = w / width * (divWidth / w);
+					let scaleY = h / height * (divHeight / h);
+					let scaleZ = 1;
+
+					// Adjust the translation values to incorporate scaling factors
+					let translateX = (w / 2) + (selfX * scaleX);
+					let translateY = (h / 2) - (selfY * scaleY);
+					let translateZ = selfZ * scaleZ;
+
+					// Create the matrix3d transformation string
+					let matrix3d = `
+						${scaleX}, 0, 0, 0,
+						0, ${scaleY}, 0, 0,
+						0, 0, ${scaleZ}, 0,
+						${translateX}, ${translateY}, ${translateZ}, 1
+					`;
+
+					// Apply the matrix3d transformation to the div or object
+					carRoofDiv.style.transform = `matrix3d(${matrix3d})`;
+					*/
+					
+					/*
+					// Define the width and height of the div or object you want to transform
+					let divWidth = 100; // Replace with the actual width
+					let divHeight = 50; // Replace with the actual height
+
+					// Calculate the distance from the camera to the coordinate system based on selfZ
+					let distance = -selfZ;
+
+					// Calculate the scaling factors based on the camera's field of view, the distance, and the div size
+					let camera = CANNONcamera;
+					let vFOV = camera.fov * (Math.PI / 180); // Convert fov to radians
+					let height = 2 * Math.tan(vFOV / 2) * distance;
+					let width = height * camera.aspect;
+
+					let scaleX = w / width * (divWidth / w);
+					let scaleY = h / height * (divHeight / h);
+					let scaleZ = 1;
+
+					// Adjust the translation values to incorporate scaling factors
+					let translateX = (w / 2) + (selfX * scaleX);
+					let translateY = (h / 2) - (selfY * scaleY);
+					let translateZ = selfZ * scaleZ;
+
+					// Apply the inverse camera transformation to the translation vector
+					let inverseCameraMatrix = new THREE.Matrix4().getInverse(camera.matrixWorld);
+					let translationVector = new THREE.Vector3(translateX, translateY, translateZ);
+					translationVector.applyMatrix4(inverseCameraMatrix);
+
+					// Create the matrix3d transformation string
+					let matrix3d = `
+						${scaleX}, 0, 0, 0,
+						0, ${scaleY}, 0, 0,
+						0, 0, ${scaleZ}, 0,
+						${translationVector.x}, ${translationVector.y}, ${translationVector.z}, 1
+					`;
+
+					// Apply the matrix3d transformation to the div or object
+					carRoofDiv.style.transform = `matrix3d(${matrix3d})`;
+					*/
+					
+					
+					// Calculate the distance from the camera to the coordinate system based on selfZ
+					//let distance = -selfZ;
+					let distance = -midZ;
+					//let distance = Math.hypot(midX, midY, midZ);
+
+					// Calculate the scaling factors based on the camera's field of view and the distance
+					let camera = CANNONcamera;
+					let vFOV = camera.fov * (Math.PI / 180); // Convert fov to radians
+					let height = 2 * Math.tan(vFOV / 2) * distance;
+					let width = height * camera.aspect;
+
+					let scaleX = w / width;
+					let scaleY = h / height;
+					let scaleZ = 1;
+
+					// Calculate the translation values
+					/*let translateX = w/2 + (selfX-boxOffset.x)*scaleX;
+					let translateY = h/2 - (selfY-boxOffset.y)*scaleY;
+					let translateZ = (selfZ-boxOffset.z)*scaleZ;
+					*/
+					/*let translateX = w/2 + selfX*scaleX;
+					let translateY = h/2 - selfY*scaleY;
+					let translateZ = selfZ*scaleZ;
+					*/
+					/*let translateX = w/2 + midX*scaleX;
+					let translateY = h/2 - midY*scaleY;
+					let translateZ = midZ*scaleZ;
+					*/
+					/*let translateX = w/2-midScreenX*.1;
+					let translateY = h/2-midScreenY*.1;
+					let translateZ = 0;
+					*/
+					/*let translateX = midScreenX*.1;
+					let translateY = midScreenY*.1;
+					let translateZ = 0;
+					*/
+					/*let translateX = w/2 + midX*scaleX;
+					let translateY = h/2 - midY*scaleY;
+					let translateZ = midZ*scaleZ;
+					*/
+					let translateX = w/2 + midX*scaleX-divWidth/2;
+					let translateY = h/2 - midY*scaleY-divHeight/2;
+					let translateZ = midZ*scaleZ;
+					
+					//console.log('translateZ='+translateZ+' boxOffset.z='+boxOffset.z);
+					
+					//let divWidth = dobWidth(carRoofDiv);
+					//let divHeight = dobHeight(carRoofDiv);
+					
+					/*let matrix3d = [
+					  1, 0, 0, 0,
+					  0, 1, 0, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+
+					/*let matrix3d = [
+					  rightDx*10000/distance, downDx*1000/distance, 0, 0,
+					  0, 1, 0, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+
+					/*let matrix3d = [
+					  rightDx*300/distance, downDx*300/distance, 0, 0,
+					  rightDy*300/distance, downDy*300/distance, 0, 0,
+					  rightDz*300/distance, downDz*300/distance, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					/*let matrix3d = [
+					  rightDx*300/distance, downDx*300/distance, 0, 0,
+					  rightDy*300/distance, downDy*300/distance, 0, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					/*let matrix3d = [
+					  rightDx*300/distance, rightDy*300/distance, 0, 0,
+					  downDx*300/distance, downDy*300/distance, 0, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					/*let matrix3d = [
+					  rightDx*300/distance, -rightDy*300/distance, 0, 0,
+					  downDx*300/distance, downDy*300/distance, 0, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					/*let matrix3d = [
+					  rightDx*300/distance, downDx*300/distance, 0, 0,
+					  -rightDy*300/distance, downDy*300/distance, 0, 0,
+					  rightDz*300/distance, downDz*300/distance, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					/*let matrix3d = [
+						rightDx*600/distance, -rightDy*100/distance, rightDz*1000, 0,
+						downDx*600/distance, downDy*100/distance, 1+downDz*1000, 0,
+						0, 0, 1, 0,
+						translateX, translateY, translateZ, 1
+					];*/
+
+					//rightDx, downDx, 0, 0,
+					
+					/*let matrix3d = [
+						1, 0, 0, 0,
+						0, 1, 0, 0,
+						0, 0, 1, 0,
+						translateX, translateY, translateZ, 1
+					];*/
+					
+					/*let matrix3d = [
+					  rightDx*300/distance, downDx*300/distance, 0, 0,
+					  -rightDy*300/distance, -downDy*300/distance, 0, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					/*let matrix3d = [
+					  rightDx, downDx, 0, 0,
+					  -rightDy, -downDy, 0, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					/*let matrix3d = [
+					  rightDx*30/distance, -rightDy*30/distance, rightDz, 0,
+					  downDx*30/distance, -downDy*30/distance, downDz, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					/*let matrix3d = [
+					  leftDx*30/distance, -leftDy*30/distance, leftDz, 0,
+					  frontDx*30/distance, -frontDy*30/distance, frontDz, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					/*let matrix3d = [
+					  leftDx*30/distance, -leftDy*30/distance, leftDz*30/distance, 0,
+					  frontDx*30/distance, -frontDy*30/distance, frontDz*30/distance, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					/*let matrix3d = [
+					  leftDx*30/distance, -leftDy*30/distance, 0, 0,
+					  frontDx*30/distance, -frontDy*30/distance, 1, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					/*let leftLen = Math.hypot(leftDx,leftDy,leftDz);
+					let frontLen = Math.hypot(frontDx,frontDy,frontDz);
+					
+					let matrix3d = [
+					  leftDx/leftLen, -leftDy/leftLen, leftDz/leftLen, 0,
+					  frontDx/frontLen, -frontDy/frontLen, frontDz/frontLen, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					/*let matrix3d = [
+					  leftDx*30/distance, -leftDy*30/distance, leftDz, 0,
+					  frontDx*30/distance, -frontDy*30/distance, frontDz, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					/*let matrix3d = [
+					  1, 0, 0, 0,
+					  0, 1, 0, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					//let leftLen = Math.hypot(leftDx,leftDy,leftDz);
+					//let frontLen = Math.hypot(frontDx,frontDy,frontDz);
+					
+					/*let matrix3d = [
+					  leftDx/leftLen, -leftDy/leftLen, leftDz/leftLen, 0,
+					  frontDx/frontLen, -frontDy/frontLen, frontDz/frontLen, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					/*
+					//why do i need to multiply by whyMul? Why this arbitrary number?
+					let whyMul = 3700;
+					let matrix3d = [
+						frontDx*whyMul/distance/divWidth, -frontDy*whyMul/distance/divWidth, 0, 0,
+						leftDx*whyMul/distance/divHeight, -leftDy*whyMul/distance/divHeight, 0, 0,
+						0, 0, 1, 0,
+						translateX, translateY, translateZ, 1
+					];*/
+					
+					/*
+					//why do i need to multiply by whyMul? Why this arbitrary number?
+					//let whyMul = 3700;
+					let whyMul = 3200;
+					let matrix3d = [
+						frontDx*whyMul/distance/divWidth, -frontDy*whyMul/distance/divWidth, -frontDz*whyMul/distance, 0,
+						leftDx*whyMul/distance/divHeight, -leftDy*whyMul/distance/divHeight, -leftDz*whyMul/distance, 0,
+						0, 0, 1, 0,
+						translateX, translateY, translateZ, 1
+					];*/
+					
+					/*
+					//why do i need to multiply by whyMul? Why this arbitrary number?
+					//let whyMul = 3700;
+					//let whyMul = 3200;
+					let whyMul = 4200;
+					let matrix3d = [
+						//FIXME remove CANNONTiltX and CANNONTiltY
+						frontDx*whyMul/distance/divWidth, -frontDy*whyMul/distance/divWidth, 0, window.CANNONTiltX,
+						leftDx*whyMul/distance/divHeight, -leftDy*whyMul/distance/divHeight, 0, window.CANNONTiltY,
+						0, 0, 1, 0,
+						translateX, translateY, translateZ, 1
+					];
+					*/
+					
+					
+					//why do i need to multiply by whyMul? Why this arbitrary number?
+					//let whyMul = 3700;
+					let whyMul = 3200;
+					//let whyMul = 4200;
+					let matrix3d = [
+						//FIXME remove CANNONTiltX and CANNONTiltY
+						-frontDx*whyMul/distance/divWidth, frontDy*whyMul/distance/divWidth, 0, window.CANNONTiltX,
+						leftDx*whyMul/distance/divHeight, -leftDy*whyMul/distance/divHeight, 0, window.CANNONTiltY,
+						0, 0, 1, 0,
+						translateX, translateY, translateZ, 1
+					];
+					
+					
+					let m = matrix3d;
+					
+					//m[3][0] = (m[0][0]+m[1][0])/2;
+					//m[3][1] = (m[0][1]+m[1][1])/2;
+
+					
+					
+					/*matrix3d[12] -= divWidth / 2;
+					matrix3d[13] -= divHeight / 2;
+					matrix3d[0] /= divWidth;
+					matrix3d[5] /= divHeight;
+					*/
+					
+					
+					
+					
+					
+					carRoofDiv.style.transform = 'matrix3d('+matrix3d.join(',')+')';
+					
+					/*
+					let scaleX = (w / 2) / (selfZ + 1);
+					let scaleY = (h / 2) / (selfZ + 1);
+					let scaleZ = 1;
+
+					// Calculate translation values
+					let translateX = w / 2 - selfX * scaleX;
+					let translateY = h / 2 + selfY * scaleY;
+					let translateZ = selfZ * scaleZ;
+					*/
+
+					/*
+					// Calculate the size of the coordinate system based on the camera's field of view
+					let camera = CANNONcamera;
+					let vFOV = camera.fov * (Math.PI / 180); // Convert fov to radians
+					let height = 2 * Math.tan(vFOV / 2);
+					let width = height * camera.aspect;
+
+					// Calculate the distance from the camera to the coordinate system
+					let distance = (height / 2) / Math.tan((camera.fov * Math.PI) / 180 / 2);
+
+					// Calculate scaling factors based on window dimensions and the size of the coordinate system
+					//let scaleX = w / 2 / width;
+					//let scaleY = h / 2 / height;
+					//let scaleZ = 1;
+					/*let scaleX = .5;
+					let scaleY = .5;
+					let scaleZ = 1;
+					*
+					//let scaleX = w/2;
+					//let scaleY = h/2;
+					let scaleZ = 1;
+					let scaleX = width / 2 / w;
+					let scaleY = height / 2 / h;
+
+					// Calculate translation values
+					let translateX = w / 2 - selfX * scaleX;
+					let translateY = h / 2 + selfY * scaleY;
+					let translateZ = selfZ * scaleZ * distance;
+					*/
+
+
+					/*
+					// Create the transformation matrix with provided numbers
+					let matrix3d = [
+					  rightDx, downDx, 0, 0,
+					  rightDy, downDy, 0, 0,
+					  rightDz, downDz, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];
+					
+					let divWidth = dobWidth(carRoofDiv);
+					let divHeight = dobHeight(carRoofDiv);
+					
+					matrix3d[12] -= divWidth / 2;
+					matrix3d[13] -= divHeight / 2;
+					matrix3d[0] /= divWidth;
+					matrix3d[5] /= divHeight;
+					*/
+					
+					/*var matrix3d = [
+					  1, 0, 0, 0,
+					  0, 1, 0, 0,
+					  0, 0, 1, 0,
+					  translateX, translateY, translateZ, 1
+					];*/
+					
+					
+					//carRoofDiv.style.transform = 'matrix3d('+matrix3d.join(',')+')';
+					
+					
+					//cuz its screen3d coordinates made by CANNONCameraAndVec3ToScreenVec3...
+					//
+					//I observed in console.log('upLeft='+upLeft) that...
+					//
+					//+x is left (car is left).
+					//
+					//mouse wheel, which moves into/out of screen,
+					//is +y into screen (car is farther away from view).
+					//
+					//+z
+					//NO this isnt working. mixing up y and z. depends on angle of view but it shouldnt.
+					//Changed to viewMatInverse (instead of viewMat), and...
+					//
+					//+x is right on screen.
+					//+y is up on screen.
+					//+z is out of the screen.
+					
+					
+					
+					
+					
+					/*
+					carRoofDiv.style.transform = '';
+					//let selfScreenXY = camXyzToScreenXY(CANNONcamera, selfX, selfY, selfZ);
+					//y seems to be dimension of gravity?
+					//let selfScreenXY = [selfZ, 1600];
+					//let selfScreenXY = [selfX*100, 1600];
+					let selfScreenXY = [800+selfX*20, 600+selfZ*20];
+					//let selfScreenXY = [800+selfY*30, 1000];
+					//window.selfScreenXY = selfScreenXY;
+					console.log('selfScreenXY='+JSON.stringify(selfScreenXY));
+					//console.log('vertices='+JSON.stringify(vertices));
+					carRoofDiv.style.left = selfScreenXY[0]+'px';
+					carRoofDiv.style.top = selfScreenXY[1]+'px';
+					*/
+					
+				};
+
+
+				window.CANNONCopyVec3 = function(vec3){
+					return new CANNON.Vec3(vec3.x, vec3.y, vec3.z);
+					/*let ret = new CANNON.Vec3();
+					vec3.copy(ret);
+					return ret;
+					*/
+				};
+
+				demo.addScene("car",function(){
+					var world = demo.getWorld();
+					//world.gravity.set(0, 0, -30);
+					//world.gravity.set(0, 0, -100);
+					world.gravity.set(0, 0, -40);
+					world.broadphase = new CANNON.SAPBroadphase(world);
+					world.defaultContactMaterial.friction = 0.2;
+
+					var groundMaterial = new CANNON.Material("groundMaterial");
+					var wheelMaterial = new CANNON.Material("wheelMaterial");
+					var wheelGroundContactMaterial = window.wheelGroundContactMaterial = new CANNON.ContactMaterial(wheelMaterial, groundMaterial, {
+							friction: 0.3,
+							restitution: 0,
+							contactEquationStiffness: 1000
+					});
+
+					// We must add the contact materials to the world
+					world.addContactMaterial(wheelGroundContactMaterial);
+
+					var chassisShape;
+					//FIXME centerOfMassAdjust is moving the 8 corners as CANNONRigidVehicleTo8Corners andOr CANNONCameraAndVec3ToScreenVec3 give.
+					var centerOfMassAdjust = new CANNON.Vec3(0, 0, -1);
+					//var centerOfMassAdjust = new CANNON.Vec3(0, 0, -13);
+					//var centerOfMassAdjust = new CANNON.Vec3(0, 0, 0);
+					chassisShape = new CANNON.Box(new CANNON.Vec3(5, 2, 0.5));
+					//chassisShape = new CANNON.Box(new CANNON.Vec3(5, 2, 1.5));
+					//chassisShape = new CANNON.Box(new CANNON.Vec3(5, 2, 3.5));
+					var chassisBody = new CANNON.Body({ mass: 1 });
+					//var chassisBody = new CANNON.Body({ mass: 7 });
+					chassisBody.addShape(chassisShape, centerOfMassAdjust);
+					chassisBody.position.set(0, 0, 0);
+
+					// Create the vehicle
+					vehicle = new CANNON.RigidVehicle({
+							chassisBody: chassisBody
+					});
+		
+					window.CANNONvehicle = vehicle;
+					
+					//JSON.stringify(CANNONvehicle.chassisBody.shapes[0].convexPolyhedronRepresentation.vertices)
+					//'[{"x":-5,"y":-2,"z":-0.5},{"x":5,"y":-2,"z":-0.5},{"x":5,"y":2,"z":-0.5},{"x":-5,"y":2,"z":-0.5},{"x":-5,"y":-2,"z":0.5},{"x":5,"y":-2,"z":0.5},{"x":5,"y":2,"z":0.5},{"x":-5,"y":2,"z":0.5}]'
+
+					var axisWidth = 7;
+					var wheelShape = new CANNON.Sphere(1.5);
+					var down = new CANNON.Vec3(0, 0, -1);
+
+					var wheelBody = new CANNON.Body({ mass: mass, material: wheelMaterial });
+					wheelBody.addShape(wheelShape);
+					vehicle.addWheel({
+							body: wheelBody,
+							position: new CANNON.Vec3(5, axisWidth/2, 0).vadd(centerOfMassAdjust),
+							axis: new CANNON.Vec3(0, 1, 0),
+							direction: down
+					});
+
+					var wheelBody = new CANNON.Body({ mass: mass, material: wheelMaterial });
+					wheelBody.addShape(wheelShape);
+					vehicle.addWheel({
+							body: wheelBody,
+							position: new CANNON.Vec3(5, -axisWidth/2, 0).vadd(centerOfMassAdjust),
+							axis: new CANNON.Vec3(0, -1, 0),
+							direction: down
+					});
+
+					var wheelBody = new CANNON.Body({ mass: mass, material: wheelMaterial });
+					wheelBody.addShape(wheelShape);
+					vehicle.addWheel({
+							body: wheelBody,
+							position: new CANNON.Vec3(-5, axisWidth/2, 0).vadd(centerOfMassAdjust),
+							axis: new CANNON.Vec3(0, 1, 0),
+							direction: down
+					});
+
+					var wheelBody = new CANNON.Body({ mass: mass, material: wheelMaterial });
+					wheelBody.addShape(wheelShape);
+					vehicle.addWheel({
+							body: wheelBody,
+							position: new CANNON.Vec3(-5, -axisWidth/2, 0).vadd(centerOfMassAdjust),
+							axis: new CANNON.Vec3(0, -1, 0),
+							direction: down
+					});
+
+					// Some damping to not spin wheels too fast
+					for(var i=0; i<vehicle.wheelBodies.length; i++){
+							vehicle.wheelBodies[i].angularDamping = 0.4;
+					}
+					
+					
+					/*
+					CANNONvehicle
+					RigidVehicle {wheelBodies: Array(4), coordinateSystem: Vec3, chassisBody: Body, constraints: Array(4), wheelAxes: Array(4), …}chassisBody: Body {id: 0, world: World, preStep: null, postStep: null, vlambda: Vec3, …}constraints: (4) [HingeConstraint, HingeConstraint, HingeConstraint, HingeConstraint]coordinateSystem: Vec3 {x: 1, y: 2, z: 3}wheelAxes: (4) [Vec3, Vec3, Vec3, Vec3]wheelBodies: Array(4)0: Bodyaabb: AABB {lowerBound: Vec3, upperBound: Vec3}aabbNeedsUpdate: trueallowSleep: trueangularDamping: 0.4angularVelocity: Vec3 {x: 0.000278500916776837, y: -0.013070479414551178, z: 0.00041133264128765117}boundingRadius: 1.5collisionFilterGroup: 1collisionFilterMask: 1collisionResponse: truefixedRotation: falseforce: Vec3 {x: 0, y: 0, z: 0}id: 1index: 0inertia: Vec3 {x: 1.5, y: 1.5, z: 1.5}initAngularVelocity: Vec3 {x: 0, y: 0, z: 0}initPosition: Vec3 {x: 5, y: 3.5, z: -1}initQuaternion: Quaternion {x: 0, y: 0, z: 0, w: 1}initVelocity: Vec3 {x: 0, y: 0, z: 0}interpolatedPosition: Vec3 {x: -13.717181680626547, y: 3.161224181173372, z: -18.450689317746022}interpolatedQuaternion: Quaternion {x: 0, y: 0, z: 0, w: 1}invInertia: Vec3 {x: 0.6666666666666666, y: 0.6666666666666666, z: 0.6666666666666666}invInertiaSolve: Vec3 {x: 0.6666666666666666, y: 0.6666666666666666, z: 0.6666666666666666}invInertiaWorld: Mat3 {elements: Array(9)}invInertiaWorldSolve: Mat3 {elements: Array(9)}invMass: 1invMassSolve: 1linearDamping: 0.01mass: 1material: Material {name: 'wheelMaterial', id: 2, friction: -1, restitution: -1}position: Vec3 {x: -13.448135874937325, y: 3.099220620486466, z: -18.08880152704733}postStep: nullpreStep: nullpreviousPosition: Vec3 {x: 0, y: 0, z: 0}quaternion: Quaternion {x: 0.01834410684928139, y: -0.5209907813526312, z: 0.006326087533211253, w: 0.8533417135626262}shapeOffsets: [Vec3]shapeOrientations: [Quaternion]shapes: [Sphere]sleepSpeedLimit: 0.1sleepState: 0sleepTimeLimit: 1timeLastSleepy: 0.03333333333333333torque: Vec3 {x: 0, y: 0, z: 0}type: 1velocity: Vec3 {x: -0.00450703612961, y: 0.0010774744204889617, z: -0.001154682615239322}visualref: Object3D {uuid: '5123AE99-D38B-488C-B84B-DC45B0E7D0D1', name: '', type: 'Object3D', parent: Scene, children: Array(1), …}vlambda: Vec3 {x: 0.000002296163363954898, y: 0.000001812874529749848, z: 0.6667795391730276}wlambda: Vec3 {x: 0.000002506524157011383, y: -0.0001101350121739523, z: 0.0000037982720739303407}world: World {dt: 0.016666666666666666, allowSleep: false, contacts: Array(8), frictionEquations: Array(16), quatNormalizeSkip: 0, …}_wakeUpAfterNarrowphase: false[[Prototype]]: EventTarget1: Body {id: 2, world: World, preStep: null, postStep: null, vlambda: Vec3, …}2: Body {id: 3, world: World, preStep: null, postStep: null, vlambda: Vec3, …}3: Body {id: 4, world: World, preStep: null, postStep: null, vlambda: Vec3, …}length: 4[[Prototype]]: Array(0)wheelForces: (4) [0, 0, 0, 0][[Prototype]]: Object
+					CANNONvehicle.wheelBodies[0]
+					Body {id: 1, world: World, preStep: null, postStep: null, vlambda: Vec3, …}aabb: AABB {lowerBound: Vec3, upperBound: Vec3}aabbNeedsUpdate: trueallowSleep: trueangularDamping: 0.4angularVelocity: Vec3 {x: 0.000463716644838031, y: -0.010655273728464917, z: 0.0004128145283580403}boundingRadius: 1.5collisionFilterGroup: 1collisionFilterMask: 1collisionResponse: truefixedRotation: falseforce: Vec3 {x: 0, y: 0, z: 0}id: 1index: 0inertia: Vec3 {x: 1.5, y: 1.5, z: 1.5}initAngularVelocity: Vec3 {x: 0, y: 0, z: 0}initPosition: Vec3 {x: 5, y: 3.5, z: -1}initQuaternion: Quaternion {x: 0, y: 0, z: 0, w: 1}initVelocity: Vec3 {x: 0, y: 0, z: 0}interpolatedPosition: Vec3 {x: -26.632447461981073, y: 5.872991901809822, z: -35.57816983042942}interpolatedQuaternion: Quaternion {x: 0, y: 0, z: 0, w: 1}invInertia: Vec3 {x: 0.6666666666666666, y: 0.6666666666666666, z: 0.6666666666666666}invInertiaSolve: Vec3 {x: 0.6666666666666666, y: 0.6666666666666666, z: 0.6666666666666666}invInertiaWorld: Mat3 {elements: Array(9)}invInertiaWorldSolve: Mat3 {elements: Array(9)}invMass: 1invMassSolve: 1linearDamping: 0.01mass: 1material: Material {name: 'wheelMaterial', id: 2, friction: -1, restitution: -1}position: Vec3 {x: -13.587950112009763, y: 2.9964170992526977, z: -18.15208299660061}postStep: nullpreStep: nullpreviousPosition: Vec3 {x: 0, y: 0, z: 0}quaternion: Quaternion {x: 0.025493158503449718, y: -0.7437509592951926, z: 0.012017966823621681, w: 0.6678623944274936}shapeOffsets: Array(1)0: Vec3 {x: 0, y: 0, z: 0}length: 1[[Prototype]]: Array(0)shapeOrientations: [Quaternion]shapes: Array(1)0: SphereboundingSphereRadius: 1.5collisionResponse: trueid: 10material: nullradius: 1.5type: 1[[Prototype]]: Shapelength: 1[[Prototype]]: Array(0)sleepSpeedLimit: 0.1sleepState: 0sleepTimeLimit: 1timeLastSleepy: 0.03333333333333333torque: Vec3 {x: 0, y: 0, z: 0}type: 1velocity: Vec3 {x: -0.003660265771179006, y: 0.00005926605648969476, z: -0.0011065171364369464}visualref: Object3D {uuid: '5123AE99-D38B-488C-B84B-DC45B0E7D0D1', name: '', type: 'Object3D', parent: Scene, children: Array(1), …}vlambda: Vec3 {x: -0.0000013595038950396654, y: 5.830222554190426e-7, z: 0.6667780464472284}wlambda: Vec3 {x: 0.0000041329862006900845, y: -0.00009213948238133661, z: 0.0000036348393269291113}world: World {dt: 0.016666666666666666, allowSleep: false, contacts: Array(7), frictionEquations: Array(14), quatNormalizeSkip: 0, …}_wakeUpAfterNarrowphase: false[[Prototype]]: EventTarget
+					CANNONvehicle.wheelBodies[0].shapes
+					[Sphere]0: Sphere {id: 10, type: 1, boundingSphereRadius: 1.5, collisionResponse: true, material: null, …}boundingSphereRadius: 1.5collisionResponse: trueid: 10material: nullradius: 1.5type: 1[[Prototype]]: Shapelength: 1[[Prototype]]: Array(0)
+					CANNONvehicle.wheelBodies[0].shapes[0].radius = .1;
+					0.1
+					CANNONvehicle.wheelBodies[0].shapes[0].boundingSphereRadius = .1;
+					0.1
+					CANNONvehicle.wheelBodies[0].shapes[0].boundingSphereRadius = 20;
+					20
+					CANNONvehicle.wheelBodies[0].shapes[0].radius = .5;
+					0.5
+					CANNONvehicle.wheelBodies[0].shapes[0].radius = 3.5;
+					3.5
+					*/
+
+					// Constrain wheels
+					var constraints = [];
+
+					// Add visuals
+					demo.addVisual(vehicle.chassisBody);
+					for(var i=0; i<vehicle.wheelBodies.length; i++){
+							demo.addVisual(vehicle.wheelBodies[i]);
+					}
+
+					vehicle.addToWorld(world);
+
+					if(false){
+							// Ground
+							var groundShape = new CANNON.Plane();
+							var ground = new CANNON.Body({ mass: 0, material: groundMaterial });
+							ground.addShape(groundShape);
+							ground.position.z = -3;
+							world.addBody(ground);
+							demo.addVisual(ground);
+					} else {
+							var mock = false;
+							var matrix = [];
+							var sizeX = 64,
+									sizeY = sizeX;
+
+							for (var i = 0; i < sizeX; i++) {
+									matrix.push([]);
+									for (var j = 0; j < sizeY; j++) {
+											var height = Math.sin(i / sizeX * Math.PI * 8) * Math.sin(j / sizeY * Math.PI * 8) * 8 + 8;
+											if(i===0 || i === sizeX-1 || j===0 || j === sizeY-1)
+													height = 10;
+
+											matrix[i].push(height);
+									}
+							}
+
+							var hfShape = new CANNON.Heightfield(matrix, {
+									elementSize: 300 / sizeX
+							});
+							var hfBody;
+
+							var quat = new CANNON.Quaternion();
+							var pos = new CANNON.Vec3(-sizeX * hfShape.elementSize / 2, -20, -20);
+
+							// Use normal
+							hfBody = new CANNON.Body({ mass: 0, material: groundMaterial });
+							hfBody.addShape(hfShape, new CANNON.Vec3(0,0,-1), new CANNON.Quaternion());
+							hfBody.position.copy(pos);
+							hfBody.quaternion.copy(quat);
+
+							if(!mock){
+									world.addBody(hfBody);
+									demo.addVisual(hfBody);
+							}
+
+							if(mock){
+									for(var i=0; i<sizeX - 1; i++){
+											for (var j = 0; j < sizeY - 1; j++) {
+													for (var k = 0; k < 2; k++) {
+															hfShape.getConvexTrianglePillar(i, j, !!k);
+															var convexBody = new CANNON.Body({ mass: 0, material: groundMaterial });
+															convexBody.addShape(hfShape.pillarConvex);
+															hfBody.pointToWorldFrame(hfShape.pillarOffset, convexBody.position);
+															world.addBody(convexBody);
+															demo.addVisual(convexBody);
+													}
+											}
+									}
+							}
+					}
+				});
+
+				demo.start();
+
+				document.onkeydown = handler;
+				document.onkeyup = handler;
+
+				var maxSteerVal = Math.PI / 8;
+				var maxSpeed = 10;
+				//var maxForce = 100;
+				var maxForce = 9200;
+				function handler(event){
+						var up = (event.type == 'keyup');
+
+						if(!up && event.type !== 'keydown')
+								return;
+
+						switch(event.keyCode){
+
+						case 38: // forward
+								vehicle.setWheelForce(up ? 0 : maxForce, 2);
+								vehicle.setWheelForce(up ? 0 : -maxForce, 3);
+								break;
+
+						case 40: // backward
+								vehicle.setWheelForce(up ? 0 : -maxForce/2, 2);
+								vehicle.setWheelForce(up ? 0 : maxForce/2, 3);
+								break;
+
+						case 39: // right
+								vehicle.setSteeringValue(up ? 0 : -maxSteerVal, 0);
+								vehicle.setSteeringValue(up ? 0 : -maxSteerVal, 1);
+								break;
+
+						case 37: // left
+								vehicle.setSteeringValue(up ? 0 : maxSteerVal, 0);
+								vehicle.setSteeringValue(up ? 0 : maxSteerVal, 1);
+								break;
+
+						}
+				}
+
+		</script>
+	<script>
+		console.log('Benrayfield added this code to control vehicle with gamepad');
+		setInterval(function(){
+			let rangeABifraction = document.getElementById('rangeA').value/50-1;
+			let rangeBBifraction = document.getElementById('rangeB').value/50-1;
+			let gamepad = navigator.getGamepads()[0];
+			let gamepadAxis0 = gamepad ? gamepad.axes[0] : 0;
+			let gamepadAxis1 = gamepad ? gamepad.axes[1] : 0;
+			let addToSteering = -rangeABifraction + -gamepadAxis0;
+			let addToForward = -300*rangeBBifraction + -500*gamepadAxis1;
+			for(let wheel=2; wheel<4; wheel++){
+				let wheelMult = wheel==2 ? 1 : -1;
+				CANNONvehicle.setWheelForce(addToForward*wheelMult, wheel);
+			}
+			for(let wheel=0; wheel<2; wheel++){
+				CANNONvehicle.setSteeringValue(addToSteering, wheel);
+			}
+			CANNONupdate();
+		},10);
+	</script>
+	</body>
+</html>
