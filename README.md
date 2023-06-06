@@ -10,4 +10,6 @@ Early experiment in making a 3d webpage. Puts a html div on the top polygon of a
 and 2 input type=range / sliders in it, one for gas and one for steering.
 Also uses browser gamepad API so left joystick does gas and steering.
 
+As usual in cannonjs demos, hold left mouse button to rotate view, and hold right mouse button to move view.
+
 <img src=https://github.com/benrayfield/DomCannon/blob/main/doc/pic/2023-6-6.png>
